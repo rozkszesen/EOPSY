@@ -5,18 +5,21 @@
 #include <signal.h> //SIGTERM etc
 
 #define NUM_CHILD 5 //number of children to be born
-int keyboardInterruptOccured = 0;//global variable for keyboard interrupt
+#define WITH_SIGNALS //preprocessor symbol for a version with signal handling
 
 void killChildren(int childrenCount, int childrenPIDs[]);
 void waitForChildrenToDie();
 
+#ifdef WITH_SIGNALS
 //signals handling
+int keyboardInterruptOccured = 0;//global variable for keyboard interrupt
 void ignoreSignals();
 void setKeyboardInterruptHandler();
 void keyboardInterruptHandler(int signum);
 void setTerminationHandler();
 void terminationHandler(int signum);
 void restoreAllDefaultHandlers();
+#endif
 
 int main()
 {
@@ -35,6 +38,7 @@ int main()
 			//save the child's pid (needed for killChildren() function)
 			childrenPIDs[childrenCount] = pid;
 			
+			#ifdef WITH_SIGNALS
 			//force ignoring all the signals
 			ignoreSignals();
 			
@@ -43,17 +47,20 @@ int main()
 			
 			//set keyboard interrupt handler
 			setKeyboardInterruptHandler();
+			#endif //WITH_SIGNALS
 
 			sleep(1);
 		}
 		//child process
 		else if(returnValue == 0)
 		{
+			#ifdef WITH_SIGNALS
 			//ignore handling of keyboard interrupt signal
 			signal(SIGINT, SIG_IGN);
 			
 			//set handler for SIGTERM signal
 			setTerminationHandler();
+			#endif //WITH_SIGNALS
 
 			printf("child[%d]: Hello, parent[%d]\n", (int)getpid(), (int)getppid());
 			sleep(10);
@@ -69,22 +76,27 @@ int main()
 			return 1;
 		}
 
+		#ifdef WITH_SIGNALS
 		if(keyboardInterruptOccured != 0)
 		{
 			printf("parent[%d]: sending SIGTERM signal - killing all my children :(\n", parentPID);
 			killChildren(childrenCount, childrenPIDs);
 			break;
 		}
+		#endif //WITH_SIGNALS
 	}
 
-	//exited the for loop - all children are born
-	printf("All children have been born!\n");
+
+	if(childrenCount == NUM_CHILD)
+		printf("All children have been born!\n");
 
 	//wait for all children to terminate, count all children
 	waitForChildrenToDie();
 
+	#ifdef WITH_SIGNALS
 	//restore old service handlers for all signals
 	restoreAllDefaultHandlers();
+	#endif //WITH_SIGNALS
 
 	return 0;
 }
@@ -105,13 +117,13 @@ void waitForChildrenToDie()
 {
 	int count = 0;
 	int parentPID = (int)getpid(); //get parent pid
-	int pid;
+	pid_t pid;
 
 	printf("parent[%d]: Waiting for my children to die... \n", parentPID);
 	//wait for death of all children including zombies, read their PIDs
-	while((int)wait(&pid)!= -1)
+	while((int)wait(NULL) != -1)
 	{
-		printf("parent[%d]: Waiting for child[%d] to die...\n", parentPID, pid);
+		printf("parent[%d]: Waiting for my child to die...\n", parentPID);
 		count++;
 	}
 	//wait(NULL) returns -1 in case of failure - so when there are no more child processes
@@ -120,6 +132,7 @@ void waitForChildrenToDie()
 
 }
 
+#ifdef WITH_SIGNALS
 void ignoreSignals()
 {
 	//iterate through all signals and ignore each one of them (NSIG - number of all defined signals)
@@ -165,3 +178,4 @@ void restoreAllDefaultHandlers()
 
 	printf("Restored default handlers for all signals\n");
 }
+#endif //WITH_SIGNALS
